@@ -37,6 +37,7 @@ CPU hotplug is the strongest retirement mechanism in this design: unlike schedul
 |---|---|
 | `apply.sh` | Installs the tools, systemd units and CPU-affinity configuration; updates GRUB |
 | `rollback.sh` | Removes installed components, restores a clean GRUB backup, strips isolation parameters and brings the configured fault CPUs online |
+| `install-user.sh` | Optional per-user crash collector for hosts where the system service is not installed |
 | `bin/faultlab` | Runs a command as root inside the dedicated lab slice, pinned to the configured fault CPUs |
 | `bin/faultlab-mode` | Switches between `retired`, `lab` and `status` |
 | `bin/faultlab-verify` | Checks boot parameters, cpusets, task placement and interrupt activity |
@@ -44,15 +45,20 @@ CPU hotplug is the strongest retirement mechanism in this design: unlike schedul
 | `bin/faultlab-ab` | Compares a command on the suspected core with a control core |
 | `bin/faultlab-crypto` | Dispatches the experimental RSA-CRT differential-fault test |
 | `bin/faultlab-watch` | Helper for watching the lab state |
+| `bin/faultlab-crashd` | Journal follower that writes one folder per crash incident |
+| `bin/faultlab-crashes` | Lists, shows, verifies, exports and prunes crash incidents |
 | `bin/faultlab-retire` | Compatibility helper for `faultlab-mode retired`; the boot unit uses the same mode switch |
 | `bin/faultlab-usb-restore` | Host-side fallback used by the rescue USB |
 | `lib/faultlab-common.sh` | Shared config, CPU-list and topology helpers |
+| `lib/faultlab_crash.py` | Crash classification, redaction and incident storage |
 | `examples/rescue-usb/` | UEFI rescue USB builder and initramfs hook |
 | `crypto/fault_crypto_test.py` | Throwaway-key RSA-CRT fault probe |
 | `tools/sdc_probe.py` | Deterministic arithmetic/checksum probe |
 | `tools/ab_record.py` | Writes machine-readable A/B verdict records |
 | `docs/fault-core-plan.md` | Detailed classification, isolation, QA and integration plan |
-| `systemd/` | systemd slice, CPU restrictions and retirement service |
+| `docs/crash-logging.md` | Crash capture, attribution, retention and inspection guide |
+| `systemd/` | systemd slice, CPU restrictions, retirement and crash-collector units |
+| `tests/` | Unit and integration tests for the crash collector |
 
 ## Before you install
 
@@ -76,8 +82,8 @@ The installer requires root and modifies system configuration. In particular, `a
 - backs up `/etc/default/grub` to `/etc/default/grub.faultlab.TIMESTAMP`;
 - edits `GRUB_CMDLINE_LINUX_DEFAULT` and runs `update-grub`;
 - installs files under `/etc/systemd/system`, `/etc/faultlab` and `/usr/local`;
-- creates `/var/log/faultlab`;
-- enables the boot-time retirement service.
+- creates `/var/log/faultlab` and `/var/log/faultlab/crashes`;
+- enables the boot-time retirement service and the crash collector.
 
 **Inspect `apply.sh` before running it.** It appends the isolation parameters to `GRUB_CMDLINE_LINUX_DEFAULT`, preserves existing kernel arguments, and refuses to overwrite a different `isolcpus` configuration. Keep a known-good boot entry or recovery medium available.
 
@@ -113,7 +119,7 @@ sudo ./apply.sh --fault-cpu N
 sudo reboot
 ```
 
-The installer configures **RETIRED** as the default mode. The boot service retires the core on every boot; **LAB is session-only** and must be re-enabled after each reboot. After reboot, confirm the state:
+The installer configures **RETIRED** as the default mode. The boot service retires the core on every boot; **LAB is session-only** and must be re-enabled after each reboot. It also enables `faultlab-crashd.service`, which starts collecting fault-core crash evidence under `/var/log/faultlab/crashes`. After reboot, confirm the state:
 
 ```bash
 sudo faultlab-mode status
@@ -204,6 +210,32 @@ The A/B log is written by default to `/var/log/faultlab/ab.jsonl`. Set `FAULTLAB
 
 A divergence is a **candidate signal**, not conclusive proof of a hardware defect. Re-run under controlled conditions and investigate the workload, environment and control core before drawing conclusions.
 
+## Crash logging
+
+`faultlab-crashd` runs in the background and stores crashes that may involve the
+configured physical core.  A system service is installed by `apply.sh`; it is
+pinned to the safe CPUs and writes to `/var/log/faultlab/crashes`.
+
+```bash
+sudo faultlab-crashes status
+sudo faultlab-crashes list
+sudo faultlab-crashes show latest
+sudo faultlab-crashes verify latest
+```
+
+Each incident is a self-contained folder with a human `README.txt`,
+`incident.json`, kernel context, RAS snapshot, topology, process placement and
+checksums.  Machine-check events, panics, oopses, lockups, faultlab coredumps
+and pstore/kdump records are captured; unrelated coredumps are ignored by
+default.  A JSONL feed is appended for QA Sentinels, which stores the incident
+with its derived component label.
+
+Coredump environment blocks and command lines are never stored because they can
+contain credentials.  Core files are referenced but not copied unless
+`FAULTLAB_CRASH_COPY_CORE=1` is set.  See
+[`docs/crash-logging.md`](crash-logging.md) for the full list of sources,
+attribution rules, retention settings and security notes.
+
 ## Experimental cryptographic probe
 
 The repository includes an RSA-CRT differential-fault experiment. It generates a disposable test key, performs signing on the candidate core and verifies signatures on the control core. The verifier checks whether a faulty signature could reveal a factor of the RSA modulus.
@@ -253,7 +285,7 @@ sudo ./rollback.sh
 sudo reboot
 ```
 
-The rollback script disables the retirement service, removes the installed systemd and tool files, restores the newest clean `/etc/default/grub.faultlab.*` backup it finds, strips any remaining faultlab parameters from `/etc/default/grub` and `grub.cfg`, runs `update-grub` and attempts to bring the configured fault CPUs online.
+The rollback script disables the retirement and crash-collector services, removes the installed systemd and tool files, restores the newest clean `/etc/default/grub.faultlab.*` backup it finds, strips any remaining faultlab parameters from `/etc/default/grub` and `grub.cfg`, runs `update-grub` and attempts to bring the configured fault CPUs online.  Crash evidence under `/var/log/faultlab/crashes` is preserved.
 
 Review the script and confirm that the selected backup is the correct one before relying on it. If no clean backup is found, the script strips the parameters from the current file. Keep a recovery path available in case the boot configuration prevents normal startup.
 

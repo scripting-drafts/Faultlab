@@ -1,0 +1,32 @@
+[Unit]
+Description=Faultlab crash collector (user)
+Documentation=https://github.com/scripting-drafts/Fault-Injection-Hatch/blob/main/docs/crash-logging.md
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC@ --user
+EnvironmentFile=-/etc/faultlab/crashd.conf
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=FAULTLAB_CRASH_DIR=@CRASH_DIR@
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+UMask=0077
+Nice=10
+LimitCORE=0
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@CRASH_DIR@
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

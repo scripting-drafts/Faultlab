@@ -110,6 +110,22 @@ on the lab CPUs despite `irqaffinity`; these are reported as WARN.
 
 Also run `sudo faultlab-mode status`.
 
+### Crash evidence
+
+The installed `faultlab-crashd.service` follows the journal and writes one
+folder per incident under `/var/log/faultlab/crashes`.  Review it with:
+
+```bash
+sudo faultlab-crashes status
+sudo faultlab-crashes list
+sudo faultlab-crashes show latest
+```
+
+Machine-check events, panics, oopses, lockups, coredumps from `faultlab.slice`
+and pstore/kdump records are captured.  Each folder contains kernel context,
+RAS state, topology, process placement and checksums.  See
+`docs/crash-logging.md` for attribution rules, retention and security notes.
+
 ## 5. Phase 4 — QA and security test programme
 
 1. **Exclusion proof:** full-system `stress-ng --all` on allowed CPUs; no task

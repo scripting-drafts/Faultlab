@@ -4,8 +4,7 @@ Classify, isolate and exercise a degrading CPU core against a healthy control co
 Install: `sudo ./apply.sh --fault-cpu N [--control-cpu M]`, then reboot.
 `--fault-cpu` is any logical CPU on the target physical core; siblings are auto-detected.
 Control defaults to another core (same package/SMT width when possible).
-QA Sentinels reads `/etc/faultlab/config` and follows the configured core.
+QA Sentinels and `faultlab-crashes` follow `/etc/faultlab/config`; crash folders: `/var/log/faultlab/crashes`.
 Lab: `sudo faultlab-mode lab` (session only; boot retires), then `sudo faultlab CMD`.
-Verify: `sudo faultlab-verify`; rollback: `sudo ./rollback.sh`.
-Rescue USB: `examples/rescue-usb/` (UEFI auto-restore).
-Docs: `docs/fault-core-plan.md`; extended guide: `docs/overview.md`. MIT. Test keys and disposable data only.
+Verify: `sudo faultlab-verify`; crashes: `sudo faultlab-crashes list`; rollback: `sudo ./rollback.sh`.
+Rescue USB: `examples/rescue-usb/`; docs: `docs/fault-core-plan.md`, `docs/crash-logging.md`; MIT.

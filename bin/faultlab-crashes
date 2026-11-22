@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""Inspect, export and prune faultlab crash incidents."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import tarfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "lib"))
+
+from faultlab_crash import (  # noqa: E402
+    FaultContext,
+    IncidentStore,
+    SYSTEM_CRASH_DIR,
+    USER_CRASH_DIR,
+    iso,
+    qa_feed_path,
+    qa_feed_record,
+    read_text,
+    run,
+    utc_now,
+)
+
+VERSION = "1.2"
+
+
+def human_size(value: int) -> str:
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{value} B"
+
+
+def default_root() -> Path:
+    override = os.environ.get("FAULTLAB_CRASH_DIR")
+    if override:
+        return Path(override)
+    return SYSTEM_CRASH_DIR if os.geteuid() == 0 else USER_CRASH_DIR
+
+
+def make_store(root: Path) -> IncidentStore:
+    system = os.geteuid() == 0 and (
+        root == SYSTEM_CRASH_DIR or str(root).startswith("/var/log/faultlab")
+    )
+    return IncidentStore(root, system=system)
+
+
+def service_state() -> str:
+    if os.geteuid() == 0:
+        rc, out, _err = run(
+            ["systemctl", "is-active", "faultlab-crashd.service"], timeout=5
+        )
+        return out.strip() or "unknown"
+    rc, out, _err = run(
+        ["systemctl", "--user", "is-active", "faultlab-crashd.service"], timeout=5
+    )
+    user_state = out.strip() or "unknown"
+    if user_state == "active":
+        return "active (user)"
+    rc, out, _err = run(
+        ["systemctl", "is-active", "faultlab-crashd.service"], timeout=5
+    )
+    system_state = out.strip() or "unknown"
+    if system_state == "active":
+        return "active (system)"
+    return user_state
+
+
+def cmd_status(args: argparse.Namespace, store: IncidentStore) -> int:
+    ctx = FaultContext.load()
+    rows = store.read_index()
+    total = sum(int(row.get("size", 0)) for row in rows)
+    critical = sum(1 for row in rows if row.get("severity") == "critical")
+    latest = rows[0] if rows else None
+    heartbeat = store.load_state("heartbeat.json", {})
+    try:
+        age = utc_now() - float(heartbeat.get("ts", 0)) if heartbeat else None
+    except (TypeError, ValueError):
+        age = None
+    print("faultlab crash collector")
+    state = service_state()
+    print(f"service:      {state}")
+    if "user" in state:
+        print(
+            "note:         user mode; run 'sudo ./apply.sh' for pstore, RAS and "
+            "root-coredump capture"
+        )
+    elif "system" in state and store.root != SYSTEM_CRASH_DIR:
+        print(
+            "note:         system store is "
+            f"{SYSTEM_CRASH_DIR}; use 'sudo faultlab-crashes ...'"
+        )
+    print(f"folder:       {store.root}")
+    print(f"fault core:   {ctx.label()}")
+    print(f"mode:         {ctx.current_mode()}")
+    print(f"fault CPUs:   {','.join(str(cpu) for cpu in ctx.fault_cpus) or '-'}")
+    print(f"incidents:    {len(rows)} ({critical} critical), {human_size(total)}")
+    feed = qa_feed_path(store, store.system)
+    feed_lines = 0
+    feed_size = 0
+    try:
+        feed_size = feed.stat().st_size
+        with feed.open("r", encoding="utf-8", errors="replace") as fh:
+            feed_lines = sum(1 for _ in fh)
+    except OSError:
+        pass
+    print(f"qa feed:      {feed} ({feed_lines} lines, {human_size(feed_size)})")
+    if age is not None:
+        state = "stale" if age > 120 else "ok"
+        print(f"heartbeat:    {age:.0f}s ago ({state})")
+    else:
+        print("heartbeat:    none")
+    if latest:
+        print(
+            "latest:       {id}  {kind}/{severity}  {attr}  {created}".format(
+                id=latest.get("id"),
+                kind=latest.get("kind"),
+                severity=latest.get("severity"),
+                attr=latest.get("attribution"),
+                created=latest.get("created"),
+            )
+        )
+    pstore = Path("/var/lib/systemd/pstore")
+    try:
+        records = sum(1 for entry in pstore.iterdir() if entry.is_dir())
+    except OSError:
+        records = 0
+    print(f"pstore:       {records} archived record(s)")
+    rc, out, _err = run(["systemctl", "is-active", "rasdaemon"], timeout=5)
+    print(f"rasdaemon:    {out.strip() or 'unknown'}")
+    rc, out, err = run(["kdump-config", "show"], timeout=8)
+    if rc == 0 and out.strip():
+        use_kdump = "(not shown)"
+        for line in out.splitlines():
+            if "USE_KDUMP" in line:
+                use_kdump = line.strip()
+                break
+        state = "ready" if "Not ready" not in out else "not ready"
+        print(f"kdump:        {state}; {use_kdump}")
+    else:
+        print("kdump:        unavailable")
+    return 0
+
+
+def cmd_list(args: argparse.Namespace, store: IncidentStore) -> int:
+    rows = store.read_index()
+    if args.kind:
+        rows = [row for row in rows if row.get("kind") == args.kind]
+    if args.attribution:
+        rows = [
+            row for row in rows if row.get("attribution") == args.attribution
+        ]
+    rows = rows[: args.limit]
+    if args.json:
+        print(json.dumps(rows, indent=2, sort_keys=True))
+        return 0
+    if not rows:
+        print("no incidents")
+        return 0
+    print(
+        f"{'ID':<36} {'TIME':<20} {'KIND':<9} {'SEV':<8} "
+        f"{'ATTR':<9} {'TARGET':<24} {'OCC':>4} {'SIZE':>9}"
+    )
+    for row in rows:
+        target = ""
+        if row.get("comm"):
+            target = f"{row.get('pid')}:{row.get('comm')}"
+        elif row.get("exe"):
+            target = str(row.get("exe"))
+        target = target[:24]
+        print(
+            f"{str(row.get('id'))[:36]:<36} "
+            f"{str(row.get('created'))[:19]:<20} "
+            f"{str(row.get('kind'))[:9]:<9} "
+            f"{str(row.get('severity'))[:8]:<8} "
+            f"{str(row.get('attribution'))[:9]:<9} "
+            f"{target:<24} "
+            f"{int(row.get('occurrences', 1)):>4} "
+            f"{human_size(int(row.get('size', 0))):>9}"
+        )
+    return 0
+
+
+def cmd_show(args: argparse.Namespace, store: IncidentStore) -> int:
+    path = store.resolve(args.ref)
+    if args.json:
+        print(read_text(path / "incident.json").rstrip())
+        return 0
+    print(read_text(path / "README.txt").rstrip())
+    print()
+    print(f"folder: {path}")
+    return 0
+
+
+def cmd_path(args: argparse.Namespace, store: IncidentStore) -> int:
+    print(store.resolve(args.ref))
+    return 0
+
+
+def cmd_export(args: argparse.Namespace, store: IncidentStore) -> int:
+    if args.all:
+        items = store.incident_dirs()
+        if not items:
+            print("no incidents to export", file=sys.stderr)
+            return 1
+        label = "all"
+    else:
+        path = store.resolve(args.ref or "latest")
+        items = [path]
+        label = path.name
+    stamp = iso().replace("-", "").replace(":", "")
+    out = args.out or (store.exports / f"{stamp}-{label}.tar.gz")
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.parent == store.exports:
+        try:
+            os.chmod(out.parent, store.dir_mode)
+        except OSError:
+            pass
+    try:
+        with tarfile.open(out, "w:gz") as tar:
+            if args.all:
+                index = store.root / "index.jsonl"
+                if index.is_file():
+                    tar.add(index, arcname="index.jsonl")
+                for item in items:
+                    tar.add(item, arcname=f"incidents/{item.name}")
+            else:
+                tar.add(items[0], arcname=items[0].name)
+        os.chmod(out, 0o600)
+    except OSError as exc:
+        print(f"export failed: {exc}", file=sys.stderr)
+        if os.geteuid() != 0:
+            print("try: sudo faultlab-crashes export ...", file=sys.stderr)
+        return 1
+    print(out)
+    print(f"{human_size(out.stat().st_size)} (mode 0600; may contain process data)")
+    return 0
+
+
+def cmd_prune(args: argparse.Namespace, store: IncidentStore) -> int:
+    remove = store.prune(args.keep, args.max_mb, dry_run=True)
+    if not remove:
+        print("nothing to prune")
+        return 0
+    for path in remove:
+        size = sum(
+            file.stat().st_size
+            for file in path.rglob("*")
+            if file.is_file()
+        )
+        print(f"would remove {path.name} ({human_size(size)})")
+    if args.dry_run or not args.yes:
+        if not args.dry_run:
+            print("re-run with --yes to remove these incidents")
+        return 0
+    removed = store.prune(args.keep, args.max_mb, dry_run=False)
+    print(f"removed {len(removed)} incident(s)")
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace, store: IncidentStore) -> int:
+    path = store.resolve(args.ref)
+    problems = store.verify(path.name)
+    if not problems:
+        print(f"OK {path.name}")
+        return 0
+    for problem in problems:
+        print(f"FAIL {path.name}: {problem}")
+    return 1
+
+
+def cmd_qa_feed(args: argparse.Namespace, store: IncidentStore) -> int:
+    if args.all:
+        items = sorted(store.incident_dirs())
+    else:
+        items = [store.resolve(args.ref or "latest")]
+    lines = []
+    for directory in items:
+        try:
+            record = json.loads(read_text(directory / "incident.json"))
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        record = dict(record)
+        record["id"] = directory.name
+        lines.append(
+            json.dumps(
+                qa_feed_record(record, directory),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    text = "\n".join(lines) + ("\n" if lines else "")
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        system_path = str(out).startswith("/var/log/faultlab")
+        os.chmod(out, 0o640 if system_path else 0o600)
+        if system_path:
+            try:
+                import grp
+
+                os.chown(out, 0, grp.getgrnam("adm").gr_gid)
+            except (OSError, KeyError):
+                pass
+        print(out)
+    else:
+        print(text, end="")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--dir", type=Path, default=argparse.SUPPRESS, help="crash store directory"
+    )
+    parser = argparse.ArgumentParser(
+        description="Inspect faultlab crash incidents.",
+        parents=[common],
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    status = sub.add_parser("status", parents=[common], help="collector status")
+    status.set_defaults(func=cmd_status)
+
+    listing = sub.add_parser("list", parents=[common], help="list incidents")
+    listing.add_argument("--limit", type=int, default=50)
+    listing.add_argument("--kind")
+    listing.add_argument("--attribution")
+    listing.add_argument("--json", action="store_true")
+    listing.set_defaults(func=cmd_list)
+
+    show = sub.add_parser("show", parents=[common], help="show one incident")
+    show.add_argument("ref", nargs="?", default="latest")
+    show.add_argument("--json", action="store_true")
+    show.set_defaults(func=cmd_show)
+
+    path = sub.add_parser("path", parents=[common], help="print incident folder")
+    path.add_argument("ref", nargs="?", default="latest")
+    path.set_defaults(func=cmd_path)
+
+    export = sub.add_parser("export", parents=[common], help="create a tar.gz")
+    export.add_argument("ref", nargs="?")
+    export.add_argument("--all", action="store_true")
+    export.add_argument("--out", type=Path)
+    export.set_defaults(func=cmd_export)
+
+    prune = sub.add_parser("prune", parents=[common], help="apply retention")
+    prune.add_argument("--keep", type=int, default=100)
+    prune.add_argument("--max-mb", type=int, default=2048)
+    prune.add_argument("--yes", action="store_true")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.set_defaults(func=cmd_prune)
+
+    verify = sub.add_parser("verify", parents=[common], help="verify checksums")
+    verify.add_argument("ref", nargs="?", default="latest")
+    verify.set_defaults(func=cmd_verify)
+
+    qa_feed = sub.add_parser(
+        "qa-feed", parents=[common], help="emit the QA Sentinels JSONL feed"
+    )
+    qa_feed.add_argument("ref", nargs="?")
+    qa_feed.add_argument("--all", action="store_true")
+    qa_feed.add_argument("--out", type=Path)
+    qa_feed.set_defaults(func=cmd_qa_feed)
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    root = getattr(args, "dir", None) or default_root()
+    store = make_store(Path(root))
+    try:
+        return int(args.func(args, store))
+    except FileNotFoundError as exc:
+        print(f"faultlab-crashes: not found: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"faultlab-crashes: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"faultlab-crashes: {exc}", file=sys.stderr)
+        if os.geteuid() != 0:
+            print("try: sudo faultlab-crashes ...", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

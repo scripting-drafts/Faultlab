@@ -162,15 +162,30 @@ fi
 
 install -d /etc/faultlab /usr/local/sbin /usr/local/lib \
     /etc/systemd/system/system.slice.d /etc/systemd/system/user.slice.d \
-    /etc/systemd/system/faultlab.slice.d
-install -d -m 0750 /var/log/faultlab
-if getent group adm >/dev/null 2>&1; then chgrp adm /var/log/faultlab; fi
+    /etc/systemd/system/faultlab.slice.d \
+    /etc/systemd/system/faultlab-crashd.service.d
+install -d -m 0750 /var/log/faultlab /var/log/faultlab/crashes
+if getent group adm >/dev/null 2>&1; then
+    chgrp adm /var/log/faultlab /var/log/faultlab/crashes
+fi
+if [[ ! -e /var/log/faultlab/crashes.jsonl ]]; then
+    : >/var/log/faultlab/crashes.jsonl
+    chmod 0640 /var/log/faultlab/crashes.jsonl
+    if getent group adm >/dev/null 2>&1; then
+        chgrp adm /var/log/faultlab/crashes.jsonl
+    fi
+fi
 
 install -m 0644 "$here/systemd/faultlab.slice" /etc/systemd/system/faultlab.slice
 install -m 0644 "$here/systemd/faultlab-retire.service" /etc/systemd/system/faultlab-retire.service
+install -m 0644 "$here/systemd/faultlab-crashd.service" /etc/systemd/system/faultlab-crashd.service
 cat >/etc/systemd/system/faultlab.slice.d/50-faultlab-cpus.conf <<EOF
 [Slice]
 AllowedCPUs=$fault_spaces
+EOF
+cat >/etc/systemd/system/faultlab-crashd.service.d/50-faultlab-cpus.conf <<EOF
+[Service]
+CPUAffinity=$safe_spaces
 EOF
 cat >/etc/systemd/system/system.slice.d/50-faultlab-allowedcpus.conf <<EOF
 [Slice]
@@ -185,7 +200,7 @@ lib=/usr/local/lib/fault-injection-rig
 rm -rf "$lib"
 install -d "$lib"
 cp -a "$here"/bin "$here"/lib "$here"/tools "$here"/crypto "$here"/README.md "$lib"/
-rm -rf "$lib"/bin/__pycache__ "$lib"/tools/__pycache__ "$lib"/crypto/__pycache__
+rm -rf "$lib"/bin/__pycache__ "$lib"/lib/__pycache__ "$lib"/tools/__pycache__ "$lib"/crypto/__pycache__
 chown -R root:root "$lib"
 find "$lib" -type d -exec chmod 0755 {} +
 find "$lib" -type f -exec chmod 0644 {} +
@@ -207,6 +222,23 @@ CONTROL_CPUS=$CONTROL_CPUS
 SAFE_CPUS=$SAFE_CPUS
 EOF
 chmod 0644 /etc/faultlab/config
+if [[ ! -e /etc/faultlab/crashd.conf ]]; then
+    cat >/etc/faultlab/crashd.conf <<'EOF'
+# Optional faultlab-crashd overrides.  Uncomment and edit as needed.
+#FAULTLAB_CRASH_KEEP=100
+#FAULTLAB_CRASH_MAX_MB=2048
+#FAULTLAB_CRASH_BURST_SECONDS=15
+#FAULTLAB_CRASH_DEDUP_SECONDS=300
+#FAULTLAB_CRASH_COLLECT_ALL=0
+#FAULTLAB_CRASH_COPY_CORE=0
+#FAULTLAB_CRASH_MAX_CORE_MB=256
+#FAULTLAB_CRASH_SCAN_SECONDS=300
+#FAULTLAB_CRASH_PRUNE_SECONDS=86400
+#FAULTLAB_CRASH_QA=1
+#FAULTLAB_CRASH_QA_FEED=/var/log/faultlab/crashes.jsonl
+EOF
+    chmod 0644 /etc/faultlab/crashd.conf
+fi
 
 # First install starts in RETIRED. Re-runs preserve the live session; the boot
 # service always retires on the next boot.
@@ -215,6 +247,11 @@ if [[ ! -e /etc/faultlab/mode ]]; then
 fi
 systemctl daemon-reload
 systemctl enable faultlab-retire.service
+systemctl enable faultlab-crashd.service 2>/dev/null || true
+if ! systemctl restart faultlab-crashd.service; then
+    echo "apply.sh: warning: faultlab-crashd failed to start" >&2
+    echo "  inspect: journalctl -u faultlab-crashd.service -n 40" >&2
+fi
 
 echo
 echo "installed. Reboot to activate domain isolation and the boot-time retire policy."

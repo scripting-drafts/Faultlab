@@ -19,12 +19,16 @@ if [[ -n ${FAULT_CPU:-} ]] && fl_cpu_exists "$FAULT_CPU"; then
 fi
 
 systemctl disable --now faultlab-retire.service 2>/dev/null || true
+systemctl disable --now faultlab-crashd.service 2>/dev/null || true
 rm -f /etc/systemd/system/faultlab.slice \
     /etc/systemd/system/faultlab-retire.service \
+    /etc/systemd/system/faultlab-crashd.service \
     /etc/systemd/system/faultlab.slice.d/50-faultlab-cpus.conf \
+    /etc/systemd/system/faultlab-crashd.service.d/50-faultlab-cpus.conf \
     /etc/systemd/system/system.slice.d/50-faultlab-allowedcpus.conf \
     /etc/systemd/system/user.slice.d/50-faultlab-allowedcpus.conf
 rmdir /etc/systemd/system/faultlab.slice.d 2>/dev/null || true
+rmdir /etc/systemd/system/faultlab-crashd.service.d 2>/dev/null || true
 
 lib=/usr/local/lib/fault-injection-rig
 if [[ -d $lib ]]; then
@@ -83,6 +87,9 @@ if [[ -f /boot/grub/grub.cfg ]]; then
         /boot/grub/grub.cfg
 fi
 
-rm -f /etc/faultlab/mode "$conf"
+rm -f /etc/faultlab/mode "$conf" /etc/faultlab/crashd.conf
 rmdir /etc/faultlab 2>/dev/null || true
 echo "rollback complete; reboot to drop the boot parameters"
+if [[ -d /var/log/faultlab/crashes ]]; then
+    echo "crash evidence preserved in /var/log/faultlab/crashes"
+fi

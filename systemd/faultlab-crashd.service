@@ -1,0 +1,34 @@
+[Unit]
+Description=Faultlab crash collector for the faulty physical core
+Documentation=https://github.com/scripting-drafts/Fault-Injection-Hatch/blob/main/docs/crash-logging.md
+After=systemd-journald.service systemd-pstore.service rasdaemon.service
+Wants=systemd-pstore.service
+ConditionPathExists=/etc/faultlab/config
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/fault-injection-rig/bin/faultlab-crashd --system
+EnvironmentFile=-/etc/faultlab/crashd.conf
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=FAULTLAB_CRASH_DIR=/var/log/faultlab/crashes
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+UMask=0027
+Nice=10
+LimitCORE=0
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log/faultlab -/var/lib/rasdaemon
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
