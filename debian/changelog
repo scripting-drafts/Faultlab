@@ -1,3 +1,10 @@
+faultlab (0.1.1) resolute; urgency=medium
+
+  * Changes since the previous release:
+    - Target resolute for the first release
+
+ -- Gerard Sala <12766134+scripting-drafts@users.noreply.github.com>  Sun, 22 Nov 2026 20:01:30 +0100
+
 faultlab (0.1.0) resolute; urgency=medium
 
   * Initial release.
