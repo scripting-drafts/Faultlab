@@ -75,7 +75,8 @@ for name in faultlab faultlab-ab faultlab-classify faultlab-crypto \
     faultlab-mode faultlab-retire faultlab-verify faultlab-watch; do
     rm -f "$rootmnt/usr/local/sbin/$name"
 done
-rm -rf "$rootmnt/usr/local/lib/fault-injection-rig"
+rm -rf "$rootmnt/usr/local/lib/faultlab" \
+    "$rootmnt/usr/local/lib/fault-injection-rig"
 
 # update-grub needs proc/sys inside the target. Unmount them again so the
 # normal init can move the initramfs mounts into place afterwards.

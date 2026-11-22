@@ -48,7 +48,7 @@ from faultlab_crash import (  # noqa: E402
 )
 
 LOG = logging.getLogger("faultlab-crashd")
-VERSION = "1.2"
+VERSION = "2.0"
 
 
 def env_int(name: str, default: int) -> int:

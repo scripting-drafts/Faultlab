@@ -1,4 +1,4 @@
-# Fault Injection Hatch — extended guide
+# Faultlab — extended guide
 
 > **Reference-machine walkthrough.** This guide predates generic topology detection.
 > The current `apply.sh` takes `--fault-cpu N` and auto-selects a control core; the
@@ -7,7 +7,7 @@
 
 A Linux CPU-isolation and fault-characterisation toolkit for investigating a suspected degrading processor core.
 
-The rig is designed around a specific reference system: an **AMD Ryzen 5 3600X (6 cores / 12 threads)** where physical core 2 maps to logical CPUs **2 and 8**. It provides a conservative retired mode, an explicitly enabled lab mode, controlled A/B workload execution, isolation checks, and experimental integrity/cryptographic fault probes.
+Faultlab is designed around a specific reference system: an **AMD Ryzen 5 3600X (6 cores / 12 threads)** where physical core 2 maps to logical CPUs **2 and 8**. It provides a conservative retired mode, an explicitly enabled lab mode, controlled A/B workload execution, isolation checks, and experimental integrity/cryptographic fault probes.
 
 > **Experimental hardware-lab software — not a production reliability or security control.**
 > The default policy is to keep the suspected core offline. Do not use this project on a machine you depend on until you have reviewed the scripts, verified the CPU topology, backed up important data, and prepared a recovery path.
@@ -104,8 +104,8 @@ Install only the tools needed for the tests you intend to run. Some optional uti
 Clone the repository and inspect the scripts:
 
 ```bash
-git clone https://github.com/scripting-drafts/Fault-Injection-Hatch.git
-cd Fault-Injection-Hatch
+git clone https://github.com/scripting-drafts/Faultlab.git
+cd Faultlab
 
 less apply.sh
 less rollback.sh
@@ -273,7 +273,7 @@ Additional guardrails:
 - Keep independent backups of important data and test evidence.
 - Never use the suspected core for trusted cryptography, password hashing, key generation, random-number generation or TLS workloads.
 - Do not treat CPU isolation as a substitute for hardware repair or replacement.
-- Do not rely on the rig as a safety mechanism for production systems.
+- Do not rely on Faultlab as a safety mechanism for production systems.
 - Preserve the control core in A/B tests so software and environment failures can be distinguished from candidate-core behaviour.
 
 ## Rollback
@@ -292,7 +292,7 @@ Review the script and confirm that the selected backup is the correct one before
 ## Documentation
 
 - [Detailed fault-core plan](docs/fault-core-plan.md) — test phases, decision matrix, isolation model, QA programme and integration notes.
-- [Repository](https://github.com/scripting-drafts/Fault-Injection-Hatch)
+- [Repository](https://github.com/scripting-drafts/Faultlab)
 
 ## License
 

@@ -2,7 +2,7 @@
 
 ## 0. Topology model
 
-The rig never assumes fixed CPU numbers. `apply.sh --fault-cpu N` takes any
+Faultlab never assumes fixed CPU numbers. `apply.sh --fault-cpu N` takes any
 logical CPU on the bad physical core and derives the core's sibling threads
 from `/sys/devices/system/cpu/cpuN/topology/thread_siblings_list`. The control
 core is another physical core, auto-selected from the same package and SMT

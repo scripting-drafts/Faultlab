@@ -1,13 +1,13 @@
 [Unit]
 Description=Faultlab crash collector for the faulty physical core
-Documentation=https://github.com/scripting-drafts/Fault-Injection-Hatch/blob/main/docs/crash-logging.md
+Documentation=https://github.com/scripting-drafts/Faultlab/blob/main/docs/crash-logging.md
 After=systemd-journald.service systemd-pstore.service rasdaemon.service
 Wants=systemd-pstore.service
 ConditionPathExists=/etc/faultlab/config
 
 [Service]
 Type=simple
-ExecStart=/usr/local/lib/fault-injection-rig/bin/faultlab-crashd --system
+ExecStart=/usr/local/lib/faultlab/bin/faultlab-crashd --system
 EnvironmentFile=-/etc/faultlab/crashd.conf
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1

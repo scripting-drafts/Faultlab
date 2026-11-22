@@ -1,6 +1,6 @@
 [Unit]
 Description=Retire the faulty physical core at boot (LAB is session-only)
-Documentation=https://github.com/scripting-drafts/Fault-Injection-Hatch#readme
+Documentation=https://github.com/scripting-drafts/Faultlab#readme
 After=sysinit.target
 Before=systemd-user-sessions.service
 ConditionPathExists=/etc/faultlab/config

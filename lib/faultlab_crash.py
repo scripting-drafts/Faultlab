@@ -1,4 +1,4 @@
-"""Shared crash-capture helpers for the fault-injection hatch.
+"""Shared crash-capture helpers for Faultlab.
 
 The collector deliberately keeps only a small, named subset of journal
 metadata.  Coredump journal records can contain COREDUMP_ENVIRON,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared configuration and CPU-topology helpers for the fault-injection rig.
+# Shared configuration and CPU-topology helpers for Faultlab.
 # Sourced by the tools; never executed directly. Requires bash.
 
 : "${FAULTLAB_CONF:=/etc/faultlab/config}"

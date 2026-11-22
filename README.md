@@ -1,4 +1,4 @@
-# Fault Injection Hatch
+# Faultlab
 
 Classify, isolate and exercise a degrading CPU core against a healthy control core.
 Install: `sudo ./apply.sh --fault-cpu N [--control-cpu M]`, then reboot.

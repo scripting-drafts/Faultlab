@@ -1,6 +1,6 @@
 [Unit]
 Description=Faultlab crash collector (user)
-Documentation=https://github.com/scripting-drafts/Fault-Injection-Hatch/blob/main/docs/crash-logging.md
+Documentation=https://github.com/scripting-drafts/Faultlab/blob/main/docs/crash-logging.md
 After=default.target
 
 [Service]

@@ -25,7 +25,7 @@ from faultlab_crash import (  # noqa: E402
     utc_now,
 )
 
-VERSION = "1.2"
+VERSION = "2.0"
 
 
 def human_size(value: int) -> str:

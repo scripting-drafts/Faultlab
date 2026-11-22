@@ -69,12 +69,12 @@ rmdir /etc/systemd/system/faultlab.slice.d 2>/dev/null || true
 rm -f /etc/faultlab/mode /etc/faultlab/config
 rmdir /etc/faultlab 2>/dev/null || true
 
-# Remove the rig, but keep this recovery entrypoint available for future boots.
+# Remove Faultlab, but keep this recovery entrypoint available for future boots.
 for name in faultlab faultlab-ab faultlab-classify faultlab-crypto \
     faultlab-mode faultlab-retire faultlab-verify faultlab-watch; do
     rm -f "/usr/local/sbin/$name"
 done
-rm -rf /usr/local/lib/fault-injection-rig
+rm -rf /usr/local/lib/faultlab /usr/local/lib/fault-injection-rig
 
 if command -v update-grub >/dev/null 2>&1; then
     update-grub >>"$LOG" 2>&1 || log "update-grub failed; see $LOG"

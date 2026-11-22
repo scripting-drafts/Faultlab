@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the fault-injection rig for the physical core that contains FAULT_CPU.
+# Install Faultlab for the physical core that contains FAULT_CPU.
 set -euo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -95,7 +95,7 @@ if ((dry_run)); then
     echo "--- /etc/systemd/system/user.slice.d/50-faultlab-allowedcpus.conf"
     printf '[Slice]\nAllowedCPUs=%s\n' "$safe_spaces"
     echo "--- /etc/faultlab/config"
-    printf 'FAULTLAB_HOME=/usr/local/lib/fault-injection-rig\nFAULT_CPU=%s\nCONTROL_CPU=%s\nFAULT_CPUS=%s\nCONTROL_CPUS=%s\nSAFE_CPUS=%s\n' \
+    printf 'FAULTLAB_HOME=/usr/local/lib/faultlab\nFAULT_CPU=%s\nCONTROL_CPU=%s\nFAULT_CPUS=%s\nCONTROL_CPUS=%s\nSAFE_CPUS=%s\n' \
         "$fault_cpu" "$control_cpu" "$FAULT_CPUS" "$CONTROL_CPUS" "$SAFE_CPUS"
     exit 0
 fi
@@ -196,7 +196,11 @@ cat >/etc/systemd/system/user.slice.d/50-faultlab-allowedcpus.conf <<EOF
 AllowedCPUs=$safe_spaces
 EOF
 
-lib=/usr/local/lib/fault-injection-rig
+legacy_lib=/usr/local/lib/fault-injection-rig
+if [[ -d $legacy_lib ]]; then
+    rm -rf "$legacy_lib"
+fi
+lib=/usr/local/lib/faultlab
 rm -rf "$lib"
 install -d "$lib"
 cp -a "$here"/bin "$here"/lib "$here"/tools "$here"/crypto "$here"/README.md "$lib"/

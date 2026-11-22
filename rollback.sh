@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Remove the fault-injection rig and bring the faulty core back online.
+# Remove Faultlab and bring the faulty core back online.
 set -euo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -30,14 +30,15 @@ rm -f /etc/systemd/system/faultlab.slice \
 rmdir /etc/systemd/system/faultlab.slice.d 2>/dev/null || true
 rmdir /etc/systemd/system/faultlab-crashd.service.d 2>/dev/null || true
 
-lib=/usr/local/lib/fault-injection-rig
-if [[ -d $lib ]]; then
-    for tool in "$lib"/bin/*; do
-        [[ ${tool##*/} == faultlab-usb-restore ]] && continue
-        [[ -e $tool ]] && rm -f "/usr/local/sbin/$(basename "$tool")"
-    done
-    rm -rf "$lib"
-fi
+for lib in /usr/local/lib/faultlab /usr/local/lib/fault-injection-rig; do
+    if [[ -d $lib ]]; then
+        for tool in "$lib"/bin/*; do
+            [[ ${tool##*/} == faultlab-usb-restore ]] && continue
+            [[ -e $tool ]] && rm -f "/usr/local/sbin/$(basename "$tool")"
+        done
+        rm -rf "$lib"
+    fi
+done
 
 systemctl daemon-reload
 
