@@ -1,0 +1,15 @@
+Source: faultlab
+Section: utils
+Priority: optional
+Maintainer: Gerard Sala <12766134+scripting-drafts@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/scripting-drafts/Faultlab
+Vcs-Git: https://github.com/scripting-drafts/Faultlab.git
+
+Package: faultlab
+Architecture: all
+Depends: ${misc:Depends}
+Description: Classify, isolate and exercise a degrading CPU core against a healthy control core.
+ Classify, isolate and exercise a degrading CPU core against a healthy control core.

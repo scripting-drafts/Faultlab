@@ -1,0 +1,5 @@
+bin/* usr/bin/
+lib/* usr/lib/
+systemd/*.service lib/systemd/system/
+systemd/*.slice lib/systemd/system/
+docs/* usr/share/doc/faultlab/
